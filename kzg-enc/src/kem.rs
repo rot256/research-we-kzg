@@ -33,48 +33,18 @@ pub struct Cts<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> {
     cts: Vec<Ct<E, P>>,
 }
 
-pub struct KemSK<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> {
+pub struct Claim<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> {
     comm: kzg10::Commitment<E>,
     rand: kzg10::Randomness<E::Fr, P>,
     poly: P,
     pont: P::Point,
 }
 
-impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> KemSK<E, P> {
-    pub fn random<R: Rng>(
-        rng: &mut R,
-        crs: &<KZGKem<E, P> as PolynomialCommitment<E::Fr, P>>::CommitterKey,
-        deg: usize,
-    ) -> Self
-    where
-        for<'a, 'b> &'a P: Div<&'b P, Output = P>,
-    {
-        let poly = P::rand(deg, rng);
-        let poly = LabeledPolynomial::new("test".to_string(), poly, None, None);
-        let pont = E::Fr::rand(rng);
-        let (comms, rands) = KZGKem::commit(crs, vec![&poly], Some(rng)).unwrap();
-        let pont = poly.evaluate(&pont);
-        KemSK {
-            comm: comms[0].commitment().clone(),
-            rand: rands[0].clone(),
-            poly: poly.polynomial().clone(),
-            pont,
-        }
-    }
-
-    pub fn pk(&self) -> KemPK<E, P> {
-        KemPK {
-            comm: self.comm.clone(),
-            pont: self.pont,
-            eval: self.poly.evaluate(&self.pont),
-        }
-    }
-
-    pub fn dec(
+impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> Claim<E, P> {
+    fn open(
         &self,
         crs: &<KZGKem<E, P> as PolynomialCommitment<E::Fr, P>>::CommitterKey,
-        ct: &Ct<E, P>,
-    ) -> Key
+    ) -> KemSK<E, P>
     where
         for<'a, 'b> &'a P: Div<&'b P, Output = P>,
     {
@@ -93,9 +63,62 @@ impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> KemSK<E, P> {
         )
         .unwrap();
 
-        assert!(proof.random_v.is_none());
+        KemSK {
+            open: proof.w,
+            comm: self.comm.clone(),
+            pont: self.pont,
+            eval: self.poly.evaluate(&self.pont),
+        }
+    }
+}
 
-        let m = E::pairing(proof.w, ct.h);
+pub struct KemSK<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> {
+    open: E::G1Affine,
+    comm: kzg10::Commitment<E>,
+    pont: P::Point,
+    eval: E::Fr,
+}
+
+impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> KemSK<E, P> {
+    pub fn random<R: Rng>(
+        rng: &mut R,
+        crs: &<KZGKem<E, P> as PolynomialCommitment<E::Fr, P>>::CommitterKey,
+        deg: usize,
+    ) -> Self
+    where
+        for<'a, 'b> &'a P: Div<&'b P, Output = P>,
+    {
+        let poly = P::rand(deg, rng);
+        let poly = LabeledPolynomial::new("test".to_string(), poly, None, None);
+        let pont = E::Fr::rand(rng);
+        let (comms, rands) = KZGKem::commit(crs, vec![&poly], Some(rng)).unwrap();
+        let pont = poly.evaluate(&pont);
+        Claim {
+            comm: comms[0].commitment().clone(),
+            rand: rands[0].clone(),
+            poly: poly.polynomial().clone(),
+            pont,
+        }
+        .open(crs)
+    }
+
+    pub fn pk(&self) -> KemPK<E, P> {
+        KemPK {
+            comm: self.comm.clone(),
+            pont: self.pont,
+            eval: self.eval,
+        }
+    }
+
+    pub fn dec(
+        &self,
+        crs: &<KZGKem<E, P> as PolynomialCommitment<E::Fr, P>>::CommitterKey,
+        ct: &Ct<E, P>,
+    ) -> Key
+    where
+        for<'a, 'b> &'a P: Div<&'b P, Output = P>,
+    {
+        let m = E::pairing(self.open, ct.h);
         to_key::<E>(m)
     }
 }
@@ -218,12 +241,15 @@ where
     pub fn sk(&self) -> MultiSK<E, P> {
         let mut sks = Vec::new();
         for (comm, rand, poly, pont) in self.trace.lock().unwrap().elem.iter() {
-            sks.push(KemSK {
-                comm: comm.clone(),
-                rand: rand.clone(),
-                poly: poly.clone(),
-                pont: pont.clone(),
-            });
+            sks.push(
+                Claim {
+                    comm: comm.clone(),
+                    rand: rand.clone(),
+                    poly: poly.clone(),
+                    pont: pont.clone(),
+                }
+                .open(self),
+            );
         }
         MultiSK { sks }
     }
