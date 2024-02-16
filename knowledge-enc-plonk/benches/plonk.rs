@@ -98,6 +98,25 @@ fn constraint_system_benchmark(name: &str, c: &mut Criterion) {
     let pp = KZG10::<E>::setup(1 << MAXIMUM_DEGREE, None, &mut OsRng)
         .expect("Unable to sample public parameters.");
 
+    let mut circuit = BenchCircuit::<<E as PairingEngine>::Fr, P>::new(10);
+    let (pk_p, (vk, _pi_pos)) =
+        circuit.compile(&pp).expect("Unable to compile circuit.");
+
+    let (proof, pi, pck) = circuit.gen_proof(&pp, pk_p, &label).unwrap();
+
+    let pvk =
+        plonk::circuit::verify_proof::<<E as PairingEngine>::Fr, P, KZG10<E>>(
+            &pp, vk, &proof, &pi, &label,
+        )
+        .expect("Unable to verify benchmark circuit.");
+
+    let pk = pvk.pk();
+    let sk = pck.sk();
+
+    println!("pk-size: {}", pk.size());
+    println!("sk-size: {}", sk.size());
+
+    /*
     let mut compiling_benchmarks =
         c.benchmark_group(format!("{0}/compile", name));
     for degree in MINIMUM_DEGREE..MAXIMUM_DEGREE {
@@ -116,6 +135,7 @@ fn constraint_system_benchmark(name: &str, c: &mut Criterion) {
         );
     }
     compiling_benchmarks.finish();
+    */
 
     let mut keygen_benchmarks = c.benchmark_group("keygen");
     for degree in MINIMUM_DEGREE..MAXIMUM_DEGREE {
@@ -192,6 +212,9 @@ fn constraint_system_benchmark(name: &str, c: &mut Criterion) {
 
         let pk = pvk.pk();
         let sk = pck.sk();
+
+        println!("pk-size: {}", pk.size());
+        println!("sk-size: {}", sk.size());
 
         let rng = &mut test_rng();
 

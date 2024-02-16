@@ -33,6 +33,12 @@ pub struct Cts<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> {
     cts: Vec<Ct<E, P>>,
 }
 
+impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> Cts<E, P> {
+    pub fn size(&self) -> usize {
+        self.cts.len()
+    }
+}
+
 pub struct Claim<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> {
     comm: kzg10::Commitment<E>,
     rand: kzg10::Randomness<E::Fr, P>,
@@ -112,7 +118,7 @@ impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> KemSK<E, P> {
 
     pub fn dec(
         &self,
-        crs: &<KZGKem<E, P> as PolynomialCommitment<E::Fr, P>>::CommitterKey,
+        _crs: &<KZGKem<E, P> as PolynomialCommitment<E::Fr, P>>::CommitterKey,
         ct: &Ct<E, P>,
     ) -> Key
     where
@@ -181,6 +187,10 @@ impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> MultiSK<E, P> {
         }
         hsh.finalize().to_vec()
     }
+
+    pub fn size(&self) -> usize {
+        self.sks.len()
+    }
 }
 
 impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> MultiPK<E, P> {
@@ -206,6 +216,10 @@ impl<E: PairingEngine, P: UVPolynomial<E::Fr, Point = E::Fr>> MultiPK<E, P> {
                 cts,
             },
         )
+    }
+
+    pub fn size(&self) -> usize {
+        self.pks.len()
     }
 }
 
